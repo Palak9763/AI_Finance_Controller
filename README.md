@@ -1,6 +1,6 @@
 # AI Financial Controller
 
-An AI-powered **finance reconciliation agent** that reconciles financial records across multiple sources, investigates exceptions, and reports measurable resolution performance.
+An AI-powered *finance reconciliation agent** that reconciles financial records across multiple sources, investigates exceptions, and reports measurable resolution performance.
 
 Built for the **Razorpay AI Buildathon — AI Finance Controller** track.
 
