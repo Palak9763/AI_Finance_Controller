@@ -1,0 +1,101 @@
+invoice_no,vendor,edge_case,status_expected
+INV-0101,Shree Balaji Traders,exact_match,MATCHED
+INV-0102,Om Enterprises,exact_match,MATCHED
+INV-0103,Kumar & Sons,exact_match,MATCHED
+INV-0104,Global Tech Solutions,exact_match,MATCHED
+INV-0105,Sunrise Distributors,exact_match,MATCHED
+INV-0106,Pinnacle Industries,exact_match,MATCHED
+INV-0107,Nova Logistics,exact_match,MATCHED
+INV-0108,Everest Suppliers,exact_match,MATCHED
+INV-0109,Silverline Corp,exact_match,MATCHED
+INV-0110,Ashoka Metals,exact_match,MATCHED
+INV-0111,Shree Balaji Traders,exact_match,MATCHED
+INV-0112,Om Enterprises,exact_match,MATCHED
+INV-0113,Kumar & Sons,exact_match,MATCHED
+INV-0114,Global Tech Solutions,exact_match,MATCHED
+INV-0115,Sunrise Distributors,exact_match,MATCHED
+INV-0116,Pinnacle Industries,exact_match,MATCHED
+INV-0117,Nova Logistics,exact_match,MATCHED
+INV-0118,Everest Suppliers,exact_match,MATCHED
+INV-0119,Silverline Corp,exact_match,MATCHED
+INV-0120,Ashoka Metals,exact_match,MATCHED
+INV-0121,Shree Balaji Traders,exact_match,MATCHED
+INV-0122,Om Enterprises,exact_match,MATCHED
+INV-0123,Kumar & Sons,exact_match,MATCHED
+INV-0124,Global Tech Solutions,exact_match,MATCHED
+INV-0125,Sunrise Distributors,exact_match,MATCHED
+INV-0126,Pinnacle Industries,exact_match,MATCHED
+INV-0127,Nova Logistics,exact_match,MATCHED
+INV-0128,Everest Suppliers,exact_match,MATCHED
+INV-0129,Silverline Corp,exact_match,MATCHED
+INV-0130,Ashoka Metals,exact_match,MATCHED
+INV-0131,Shree Balaji Traders,exact_match,MATCHED
+INV-0132,Om Enterprises,exact_match,MATCHED
+INV-0133,Kumar & Sons,exact_match,MATCHED
+INV-0134,Global Tech Solutions,exact_match,MATCHED
+INV-0135,Sunrise Distributors,exact_match,MATCHED
+INV-0136,Pinnacle Industries,exact_match,MATCHED
+INV-0137,Nova Logistics,exact_match,MATCHED
+INV-0138,Everest Suppliers,exact_match,MATCHED
+INV-0139,Silverline Corp,exact_match,MATCHED
+INV-0140,Ashoka Metals,exact_match,MATCHED
+INV-0141,Shree Balaji Traders,exact_match,MATCHED
+INV-0142,Om Enterprises,exact_match,MATCHED
+INV-0143,Kumar & Sons,exact_match,MATCHED
+INV-0144,Global Tech Solutions,exact_match,MATCHED
+INV-0145,Sunrise Distributors,exact_match,MATCHED
+INV-0146,Pinnacle Industries,exact_match,MATCHED
+INV-0147,Nova Logistics,amount_mismatch,MISMATCH
+INV-0148,Everest Suppliers,amount_mismatch,MISMATCH
+INV-0149,Silverline Corp,amount_mismatch,MISMATCH
+INV-0150,Ashoka Metals,amount_mismatch,MISMATCH
+INV-0151,Shree Balaji Traders,missing_tally,MISSING
+INV-0152,Om Enterprises,missing_tally,MISSING
+INV-0153,Kumar & Sons,missing_tally,MISSING
+INV-0154,Global Tech Solutions,missing_tally,MISSING
+INV-0155,Sunrise Distributors,missing_bank,MISSING
+INV-0156,Pinnacle Industries,missing_bank,MISSING
+INV-0157,Nova Logistics,missing_bank,MISSING
+INV-0158,Everest Suppliers,missing_bank,MISSING
+INV-0159,Silverline Corp,duplicate_invoice,DUPLICATE
+INV-0160,Ashoka Metals,duplicate_invoice,DUPLICATE
+INV-0161,Shree Balaji Traders,duplicate_invoice,DUPLICATE
+INV-0162,Om Enterprises,duplicate_tally,DUPLICATE
+INV-0163,Kumar & Sons,duplicate_tally,DUPLICATE
+INV-0164,Global Tech Solutions,invoice_format_variant,MATCHED
+INV-0165,Sunrise Distributors,invoice_format_variant,MATCHED
+INV-0166,Pinnacle Industries,invoice_format_variant,MATCHED
+INV-0167,Shree Balaji Traders,vendor_name_variant,MATCHED
+INV-0168,Om Enterprises,vendor_name_variant,MATCHED
+INV-0169,Global Tech Solutions,vendor_name_variant,MATCHED
+INV-0170,Ashoka Metals,bank_fee_deduction,MATCHED_WITH_TOLERANCE
+INV-0171,Shree Balaji Traders,bank_fee_deduction,MATCHED_WITH_TOLERANCE
+INV-0172,Om Enterprises,bank_fee_deduction,MATCHED_WITH_TOLERANCE
+INV-0173,Kumar & Sons,bank_fee_deduction,MATCHED_WITH_TOLERANCE
+INV-0174,Global Tech Solutions,date_within_tolerance,MATCHED_WITH_TOLERANCE
+INV-0175,Sunrise Distributors,date_within_tolerance,MATCHED_WITH_TOLERANCE
+INV-0176,Pinnacle Industries,date_within_tolerance,MATCHED_WITH_TOLERANCE
+INV-0177,Nova Logistics,date_within_tolerance,MATCHED_WITH_TOLERANCE
+INV-0178,Everest Suppliers,date_outside_tolerance,PARTIAL_MATCH
+INV-0179,Silverline Corp,date_outside_tolerance,PARTIAL_MATCH
+INV-0180,Ashoka Metals,date_outside_tolerance,PARTIAL_MATCH
+INV-0181,Shree Balaji Traders,gstin_mismatch,MISMATCH
+INV-0182,Om Enterprises,gstin_mismatch,MISMATCH
+INV-0183,Kumar & Sons,gstin_mismatch,MISMATCH
+INV-0184,Global Tech Solutions,same_vendor_multi_invoice,MATCHED
+INV-0185,Global Tech Solutions,same_vendor_multi_invoice,MATCHED
+INV-0186,Global Tech Solutions,same_vendor_multi_invoice,MATCHED
+INV-0187,Sunrise Distributors,same_amount_diff_invoice,MATCHED
+INV-0188,Pinnacle Industries,same_amount_diff_invoice,MATCHED
+INV-0189,Nova Logistics,multiple_plausible_matches,AMBIGUOUS
+INV-0190,Nova Logistics,multiple_plausible_matches,AMBIGUOUS
+INV-0191,Everest Suppliers,multiple_plausible_matches,AMBIGUOUS
+INV-0192,Everest Suppliers,multiple_plausible_matches,AMBIGUOUS
+INV-0193,Silverline Corp,multiple_plausible_matches,AMBIGUOUS
+INV-0194,Silverline Corp,multiple_plausible_matches,AMBIGUOUS
+INV-0195,Unregistered Vendor XYZ,unknown_invalid_vendor,REVIEW_REQUIRED
+INV-0196,Unregistered Vendor XYZ,unknown_invalid_vendor,REVIEW_REQUIRED
+INV-0197,Om Enterprises,itc_mismatch,PARTIAL_MATCH
+INV-0198,Kumar & Sons,itc_mismatch,PARTIAL_MATCH
+INV-0199,Global Tech Solutions,itc_mismatch,PARTIAL_MATCH
+GSTR3B-SUMMARY,ALL,gstr3b_summary_variance,REVIEW_REQUIRED

@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.pyc
+backend/finance_controller.db
+backend/.env
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+
+# OS
+.DS_Store
