@@ -20,9 +20,7 @@ const fmt = (v: string | number | null | undefined) =>
 const fmtCount = (v: number | undefined) => v ?? 0
 
 export default function ReconciliationPage() {
-  const [rows, setRows]       = useState<ReconciliationResult[]>([])
   const [allRows, setAllRows] = useState<ReconciliationResult[]>([])
-  const [total, setTotal]     = useState(0)
   const [loading, setLoading] = useState(true)
   const [summary, setSummary] = useState<Dashboard | null>(null)
   
@@ -37,51 +35,59 @@ export default function ReconciliationPage() {
   const toast = useToast()
   const nav   = useNavigate()
 
+  // Map tab keys to the status strings stored in the DB
+  const TAB_STATUS: Record<string, string[]> = {
+    MATCHED:    ['MATCHED'],
+    MISMATCH:   ['MISMATCH'],
+    MISSING:    ['MISSING'],
+    DUPLICATE:  ['DUPLICATE'],
+    DIFFERENCE: ['PARTIAL_MATCH', 'AMBIGUOUS', 'REVIEW_REQUIRED'],
+  }
+
   const handleUpload = async () => {
     if (!file) return
     toast(`Uploading ${file.name}...`, 'info')
-    // Simulate upload delay
     await new Promise(r => setTimeout(r, 1500))
     toast('Data uploaded and processed successfully!', 'success')
     setUploadOpen(false)
     setFile(null)
   }
 
+  // Single fetch — no tab filter, client-side does all slicing
   useEffect(() => {
     (async () => {
+      setLoading(true)
       try {
         const [dashRes, allRes] = await Promise.all([
           endpoints.dashboard(),
-          endpoints.results({ limit: 2000 }),
+          endpoints.results({ limit: 5000 }),
         ])
         setSummary(dashRes.data)
         setAllRows(allRes.data.results)
       } catch {
-        // ignore
+        toast('Failed to load reconciliation data', 'error')
+      } finally {
+        setLoading(false)
       }
     })()
   }, [])
 
-  const load = async () => {
-    setLoading(true)
-    try {
-      const params: any = {}
-      if (tab !== 'ALL') params.status = tab // We map standard statuses to tabs, this is a simplified proxy
-      if (search) params.search = search
-      const res = await endpoints.results(params)
-      setRows(res.data.results)
-      setTotal(res.data.total)
-    } catch {
-      toast('Failed to load reconciliation results', 'error')
-    } finally {
-      setLoading(false)
-    }
-  }
+  // Client-side tab + search filter
+  const filtered = useMemo(() => {
+    const statuses = TAB_STATUS[tab] ?? [tab]
+    const q = search.trim().toLowerCase()
+    return allRows.filter(r => {
+      const statusMatch = statuses.includes(r.status ?? '')
+      if (!q) return statusMatch
+      return statusMatch && (
+        r.invoice_no?.toLowerCase().includes(q) ||
+        r.vendor?.toLowerCase().includes(q)
+      )
+    })
+  }, [allRows, tab, search])
 
-  useEffect(() => { load() }, [tab])
-
-  const paged = rows.slice(page * pageSize, (page + 1) * pageSize)
-  const pageCount = Math.max(1, Math.ceil(rows.length / pageSize))
+  const paged     = filtered.slice(page * pageSize, (page + 1) * pageSize)
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize))
 
   const ev = summary?.evaluation
   const counts = ev?.status_breakdown || {}
@@ -109,8 +115,12 @@ export default function ReconciliationPage() {
     }
   }, [rows])
 
-  const fmtDiff = (d: number) => {
-    if (Math.abs(d) < 0.01) return { label: '—', color: '#94a3b8' }
+  const fmtDiff = (d: number, isCount = false) => {
+    if (Math.abs(d) < (isCount ? 0.5 : 0.01)) return { label: '—', color: '#94a3b8' }
+    if (isCount) {
+      const n = Math.round(d)
+      return { label: n > 0 ? `+${n}` : `${n}`, color: n > 0 ? '#16a34a' : '#dc2626' }
+    }
     const s = `₹${Math.abs(d).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
     return { label: d > 0 ? `+${s}` : `-${s}`, color: d > 0 ? '#16a34a' : '#dc2626' }
   }
@@ -210,7 +220,7 @@ export default function ReconciliationPage() {
             </thead>
             <tbody>
               {COMPARISON_ROWS.map(({ label, tally, gstr2b, isCount }, idx, arr) => {
-                const diff = fmtDiff(tally - gstr2b)
+                const diff = fmtDiff(tally - gstr2b, isCount)
                 const display = (v: number) => isCount ? String(v) : `₹${v.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                 return (
                   <tr key={label} style={{ borderBottom: idx === arr.length - 1 ? 'none' : '1px dashed #f1f5f9' }}>
