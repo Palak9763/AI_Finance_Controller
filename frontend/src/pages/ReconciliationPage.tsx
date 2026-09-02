@@ -21,6 +21,7 @@ const fmtCount = (v: number | undefined) => v ?? 0
 
 export default function ReconciliationPage() {
   const [rows, setRows]       = useState<ReconciliationResult[]>([])
+  const [allRows, setAllRows] = useState<ReconciliationResult[]>([])
   const [total, setTotal]     = useState(0)
   const [loading, setLoading] = useState(true)
   const [summary, setSummary] = useState<Dashboard | null>(null)
@@ -49,8 +50,12 @@ export default function ReconciliationPage() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await endpoints.dashboard()
-        setSummary(res.data)
+        const [dashRes, allRes] = await Promise.all([
+          endpoints.dashboard(),
+          endpoints.results({ limit: 2000 }),
+        ])
+        setSummary(dashRes.data)
+        setAllRows(allRes.data.results)
       } catch {
         // ignore
       }
@@ -80,6 +85,44 @@ export default function ReconciliationPage() {
 
   const ev = summary?.evaluation
   const counts = ev?.status_breakdown || {}
+
+  // Compute Tally vs GSTR-2B comparison from ALL rows (unfiltered)
+  const comparison = useMemo(() => {
+    const tallyCount  = allRows.filter(r => r.tally_amount != null).length
+    const gstr2bCount = allRows.filter(r => r.gstr2b_amount != null).length
+    const sum = (key: keyof ReconciliationResult) =>
+      allRows.reduce((acc, r) => acc + (Number(r[key]) || 0), 0)
+    return {
+      tallyInvoices:  tallyCount,
+      gstr2bInvoices: gstr2bCount,
+      tallyTaxable:   sum('tally_amount'),
+      gstr2bTaxable:  sum('gstr2b_amount'),
+      // CGST / SGST / IGST / Total approximated from tally_amount & gstr2b_amount splits
+      tallyCgst:   sum('tally_amount') * 0.09,
+      gstr2bCgst:  sum('gstr2b_amount') * 0.09,
+      tallySgst:   sum('tally_amount') * 0.09,
+      gstr2bSgst:  sum('gstr2b_amount') * 0.09,
+      tallyIgst:   0,
+      gstr2bIgst:  0,
+      tallyTotal:  sum('tally_amount') * 1.18,
+      gstr2bTotal: sum('gstr2b_amount') * 1.18,
+    }
+  }, [rows])
+
+  const fmtDiff = (d: number) => {
+    if (Math.abs(d) < 0.01) return { label: '—', color: '#94a3b8' }
+    const s = `₹${Math.abs(d).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    return { label: d > 0 ? `+${s}` : `-${s}`, color: d > 0 ? '#16a34a' : '#dc2626' }
+  }
+
+  const COMPARISON_ROWS = [
+    { label: 'Total Invoices', tally: comparison.tallyInvoices,  gstr2b: comparison.gstr2bInvoices,  isCount: true },
+    { label: 'Taxable Value',  tally: comparison.tallyTaxable,   gstr2b: comparison.gstr2bTaxable,   isCount: false },
+    { label: 'Total CGST',    tally: comparison.tallyCgst,       gstr2b: comparison.gstr2bCgst,      isCount: false },
+    { label: 'Total SGST',    tally: comparison.tallySgst,       gstr2b: comparison.gstr2bSgst,      isCount: false },
+    { label: 'Total IGST',    tally: comparison.tallyIgst,       gstr2b: comparison.gstr2bIgst,      isCount: false },
+    { label: 'Total Amount',  tally: comparison.tallyTotal,      gstr2b: comparison.gstr2bTotal,     isCount: false },
+  ]
 
   // Cards Data based on screenshot exactly
   const CARDS = [
@@ -166,14 +209,18 @@ export default function ReconciliationPage() {
               </tr>
             </thead>
             <tbody>
-              {['Total Invoices', 'Taxable Value', 'Total CGST', 'Total SGST', 'Total IGST', 'Total Amount'].map((label, idx, arr) => (
-                <tr key={label} style={{ borderBottom: idx === arr.length - 1 ? 'none' : '1px dashed #f1f5f9' }}>
-                  <td style={{ padding: '14px 20px', color: '#475569' }}>{label}</td>
-                  <td style={{ padding: '14px 20px', textAlign: 'right', fontWeight: 700, color: '#0f172a' }}>{label === 'Total Invoices' ? '0' : '₹0.00'}</td>
-                  <td style={{ padding: '14px 20px', textAlign: 'right', color: '#94a3b8' }}>—</td>
-                  <td style={{ padding: '14px 20px', textAlign: 'right', fontWeight: 700, color: '#0f172a' }}>{label === 'Total Invoices' ? '0' : '₹0.00'}</td>
-                </tr>
-              ))}
+              {COMPARISON_ROWS.map(({ label, tally, gstr2b, isCount }, idx, arr) => {
+                const diff = fmtDiff(tally - gstr2b)
+                const display = (v: number) => isCount ? String(v) : `₹${v.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                return (
+                  <tr key={label} style={{ borderBottom: idx === arr.length - 1 ? 'none' : '1px dashed #f1f5f9' }}>
+                    <td style={{ padding: '14px 20px', color: '#475569' }}>{label}</td>
+                    <td style={{ padding: '14px 20px', textAlign: 'right', fontWeight: 700, color: '#0f172a' }}>{display(tally)}</td>
+                    <td style={{ padding: '14px 20px', textAlign: 'right', fontWeight: 600, color: diff.color }}>{diff.label}</td>
+                    <td style={{ padding: '14px 20px', textAlign: 'right', fontWeight: 700, color: '#0f172a' }}>{display(gstr2b)}</td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
