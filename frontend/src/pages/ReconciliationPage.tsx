@@ -15,6 +15,15 @@ const TABS = [
   { key: 'DIFFERENCE', label: 'Difference', icon: GitCompare },
 ]
 
+// Status map lives outside the component — stable reference, never recreated
+const TAB_STATUS: Record<string, string[]> = {
+  MATCHED:    ['MATCHED'],
+  MISMATCH:   ['MISMATCH'],
+  MISSING:    ['MISSING'],
+  DUPLICATE:  ['DUPLICATE'],
+  DIFFERENCE: ['PARTIAL_MATCH', 'AMBIGUOUS', 'REVIEW_REQUIRED'],
+}
+
 const fmt = (v: string | number | null | undefined) =>
   v != null ? `₹${Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'
 const fmtCount = (v: number | undefined) => v ?? 0
@@ -34,15 +43,6 @@ export default function ReconciliationPage() {
   
   const toast = useToast()
   const nav   = useNavigate()
-
-  // Map tab keys to the status strings stored in the DB
-  const TAB_STATUS: Record<string, string[]> = {
-    MATCHED:    ['MATCHED'],
-    MISMATCH:   ['MISMATCH'],
-    MISSING:    ['MISSING'],
-    DUPLICATE:  ['DUPLICATE'],
-    DIFFERENCE: ['PARTIAL_MATCH', 'AMBIGUOUS', 'REVIEW_REQUIRED'],
-  }
 
   const handleUpload = async () => {
     if (!file) return
@@ -113,7 +113,7 @@ export default function ReconciliationPage() {
       tallyTotal:  sum('tally_amount') * 1.18,
       gstr2bTotal: sum('gstr2b_amount') * 1.18,
     }
-  }, [rows])
+  }, [allRows])
 
   const fmtDiff = (d: number, isCount = false) => {
     if (Math.abs(d) < (isCount ? 0.5 : 0.01)) return { label: '—', color: '#94a3b8' }
@@ -317,7 +317,7 @@ export default function ReconciliationPage() {
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             padding: '12px 20px', borderTop: '1px solid #e2e8f0', color: '#94a3b8', fontSize: 12
           }}>
-            <div>{paged.length === 0 ? 'No entries found' : `Showing ${page * pageSize + 1} to ${Math.min((page + 1) * pageSize, rows.length)} of ${rows.length} entries`}</div>
+            <div>{paged.length === 0 ? 'No entries found' : `Showing ${page * pageSize + 1} to ${Math.min((page + 1) * pageSize, filtered.length)} of ${filtered.length} entries`}</div>
             
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
               {/* Pagination controls */}
