@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+
 # AI Finance Controller
 
 A working prototype of an AI-assisted finance reconciliation controller. It closes one real
@@ -692,7 +692,6 @@ CONFIDENTLY RESOLVED
         vs
 REQUIRES HUMAN REVIEW
 ```
-
 ---
 
 ## 🎯 Goal
