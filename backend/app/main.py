@@ -76,10 +76,23 @@ def run_reconciliation(db: Session = Depends(get_db)):
 
     invoices = ingestion.rows_as_dicts(db, models.Invoice)
     gstr1 = ingestion.rows_as_dicts(db, models.Gstr1Record)
-    gstr2b = ingestion.rows_as_dicts(db, models.Gstr2bRecord)
+    gstr2b_raw = ingestion.rows_as_dicts(db, models.Gstr2bRecord)
     tally = ingestion.rows_as_dicts(db, models.TallyRecord)
     bank = ingestion.rows_as_dicts(db, models.BankTransaction)
     ground_truth = ingestion.load_ground_truth()
+
+    # GSTR-2B stores taxable_value + cgst + sgst + igst separately.
+    # Tally stores a single gross (tax-inclusive) amount.
+    # Pre-compute gross total on each GSTR-2B record so both sides compare on the same basis.
+    from decimal import Decimal, InvalidOperation
+    def _safe_dec(v):
+        try: return Decimal(str(v or 0))
+        except InvalidOperation: return Decimal(0)
+
+    gstr2b = []
+    for r in gstr2b_raw:
+        gross = _safe_dec(r.get("taxable_value")) + _safe_dec(r.get("cgst")) + _safe_dec(r.get("sgst")) + _safe_dec(r.get("igst"))
+        gstr2b.append({**r, "total": str(gross)})
 
     t0 = time.time()
     results, norm = recon_svc.reconcile(invoices, gstr1, gstr2b, tally, bank)

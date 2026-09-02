@@ -92,26 +92,20 @@ export default function ReconciliationPage() {
   const ev = summary?.evaluation
   const counts = ev?.status_breakdown || {}
 
-  // Compute Tally vs GSTR-2B comparison from ALL rows (unfiltered)
+  // Compute Tally vs GSTR-2B comparison from ALL rows (unfiltered).
+  // IMPORTANT: Tally's `tally_amount` is a single gross (tax-inclusive) ledger figure.
+  // There is no taxable/CGST/SGST split in Tally data. We do gross-vs-gross only.
+  // gstr2b_amount is also stored as the gross total by the reconciliation engine.
   const comparison = useMemo(() => {
-    const tallyCount  = allRows.filter(r => r.tally_amount != null).length
-    const gstr2bCount = allRows.filter(r => r.gstr2b_amount != null).length
+    const tallyCount  = allRows.filter(r => r.tally_amount  != null && r.tally_amount  !== '').length
+    const gstr2bCount = allRows.filter(r => r.gstr2b_amount != null && r.gstr2b_amount !== '').length
     const sum = (key: keyof ReconciliationResult) =>
       allRows.reduce((acc, r) => acc + (Number(r[key]) || 0), 0)
     return {
       tallyInvoices:  tallyCount,
       gstr2bInvoices: gstr2bCount,
-      tallyTaxable:   sum('tally_amount'),
-      gstr2bTaxable:  sum('gstr2b_amount'),
-      // CGST / SGST / IGST / Total approximated from tally_amount & gstr2b_amount splits
-      tallyCgst:   sum('tally_amount') * 0.09,
-      gstr2bCgst:  sum('gstr2b_amount') * 0.09,
-      tallySgst:   sum('tally_amount') * 0.09,
-      gstr2bSgst:  sum('gstr2b_amount') * 0.09,
-      tallyIgst:   0,
-      gstr2bIgst:  0,
-      tallyTotal:  sum('tally_amount') * 1.18,
-      gstr2bTotal: sum('gstr2b_amount') * 1.18,
+      tallyGross:     sum('tally_amount'),   // gross total — the only field Tally has
+      gstr2bGross:    sum('gstr2b_amount'),  // gross total stored by reconciliation engine
     }
   }, [allRows])
 
@@ -125,13 +119,12 @@ export default function ReconciliationPage() {
     return { label: d > 0 ? `+${s}` : `-${s}`, color: d > 0 ? '#16a34a' : '#dc2626' }
   }
 
+  // Only show what the data actually supports — gross-vs-gross.
+  // Removed fabricated CGST/SGST/IGST/Taxable rows: Tally has no tax split,
+  // so deriving * 0.09 on a gross amount double-counts tax.
   const COMPARISON_ROWS = [
-    { label: 'Total Invoices', tally: comparison.tallyInvoices,  gstr2b: comparison.gstr2bInvoices,  isCount: true },
-    { label: 'Taxable Value',  tally: comparison.tallyTaxable,   gstr2b: comparison.gstr2bTaxable,   isCount: false },
-    { label: 'Total CGST',    tally: comparison.tallyCgst,       gstr2b: comparison.gstr2bCgst,      isCount: false },
-    { label: 'Total SGST',    tally: comparison.tallySgst,       gstr2b: comparison.gstr2bSgst,      isCount: false },
-    { label: 'Total IGST',    tally: comparison.tallyIgst,       gstr2b: comparison.gstr2bIgst,      isCount: false },
-    { label: 'Total Amount',  tally: comparison.tallyTotal,      gstr2b: comparison.gstr2bTotal,     isCount: false },
+    { label: 'Total Invoices',        tally: comparison.tallyInvoices, gstr2b: comparison.gstr2bInvoices, isCount: true  },
+    { label: 'Total Amount (Gross)',   tally: comparison.tallyGross,    gstr2b: comparison.gstr2bGross,    isCount: false },
   ]
 
   // Cards Data based on screenshot exactly
