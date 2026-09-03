@@ -138,8 +138,15 @@ export interface Anomaly {
   reconciliation_status: string
 }
 
+export interface AIConfig {
+  ai_provider: string
+  ai_provider_active: boolean
+  model: string | null
+}
+
 export const endpoints = {
   health: () => axios.get('/health'),
+  config: () => api.get<AIConfig>('/config'),
   runReconciliation: () => api.post('/reconciliation/run'),
   dashboard: () => api.get<Dashboard>('/dashboard'),
   evaluation: () => api.get<Dashboard>('/evaluation'),
@@ -157,4 +164,13 @@ export const endpoints = {
   auditLogs: (params?: any) => api.get<{ audit_logs: AuditLogEntry[] }>('/audit-logs', { params }),
   knowledgeDocs: () => api.get('/knowledge-documents'),
   invoices: (params?: any) => api.get('/transactions/invoices', { params }),
+  uploadCsv: (file: File, source: string) => {
+    const form = new FormData()
+    form.append('file', file)
+    form.append('source', source)
+    return api.post<{
+      source: string; filename: string; rows_inserted: number
+      rows_errored: number; errors: { row: number; error: string }[]; message: string
+    }>('/upload', form, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
 }

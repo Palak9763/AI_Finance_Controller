@@ -36,21 +36,36 @@ export default function ReconciliationPage() {
   const [tab, setTab]         = useState('MATCHED')
   const [search, setSearch]   = useState('')
   const [page, setPage]       = useState(0)
-  const pageSize = 10
+  const [pageSize, setPageSize] = useState(10)
   
   const [uploadOpen, setUploadOpen] = useState(false)
   const [file, setFile] = useState<File | null>(null)
+  const [uploadSource, setUploadSource] = useState('invoices')
+  const [uploading, setUploading] = useState(false)
   
   const toast = useToast()
   const nav   = useNavigate()
 
   const handleUpload = async () => {
     if (!file) return
-    toast(`Uploading ${file.name}...`, 'info')
-    await new Promise(r => setTimeout(r, 1500))
-    toast('Data uploaded and processed successfully!', 'success')
-    setUploadOpen(false)
-    setFile(null)
+    setUploading(true)
+    toast(`Uploading ${file.name} as '${uploadSource}'...`, 'info')
+    try {
+      const res = await endpoints.uploadCsv(file, uploadSource)
+      const { rows_inserted, rows_errored, message } = res.data
+      if (rows_errored > 0) {
+        toast(`${rows_inserted} rows uploaded, ${rows_errored} errors. ${message}`, 'error')
+      } else {
+        toast(message, 'success')
+      }
+      setUploadOpen(false)
+      setFile(null)
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail ?? 'Upload failed. Check file format.'
+      toast(detail, 'error')
+    } finally {
+      setUploading(false)
+    }
   }
 
   // Single fetch — no tab filter, client-side does all slicing
@@ -181,11 +196,11 @@ export default function ReconciliationPage() {
 
   // Cards Data based on screenshot exactly
   const CARDS = [
-    { key: 'MATCHED', label: 'MATCHED', sub: 'ITC claimable: ₹0', count: counts['MATCHED'] ?? 0, color: '#16a34a' },
-    { key: 'MISMATCH', label: 'MISMATCH', sub: 'Amount differences', count: counts['MISMATCH'] ?? 0, color: '#dc2626' },
-    { key: 'ONLY_IN_TALLY', label: 'ONLY IN TALLY', sub: 'Missing from 2B', count: counts['MISSING'] ?? 0, color: '#0f172a' },
-    { key: 'ONLY_IN_2B', label: 'ONLY IN 2B', sub: 'Not in Tally', count: counts['DUPLICATE'] ?? 0, color: '#ea580c' },
-    { key: 'DIFFERENCE', label: 'DIFFERENCE', sub: 'All mismatches', count: counts['REVIEW_REQUIRED'] ?? 0, color: '#dc2626' },
+    { key: 'MATCHED',      label: 'MATCHED',      sub: 'ITC claimable',          count: counts['MATCHED'] ?? 0,                color: '#16a34a' },
+    { key: 'MISMATCH',     label: 'MISMATCH',     sub: 'Amount differences',     count: counts['MISMATCH'] ?? 0,               color: '#dc2626' },
+    { key: 'ONLY_IN_TALLY',label: 'ONLY IN TALLY',sub: 'Not in GSTR-2B',        count: comparison.tallyOnlyCount,             color: '#0f172a' },
+    { key: 'ONLY_IN_2B',   label: 'ONLY IN 2B',   sub: 'Not in Tally',          count: comparison.gstr2bOnlyCount,            color: '#ea580c' },
+    { key: 'DIFFERENCE',   label: 'DIFFERENCE',   sub: 'Partial / Ambiguous',   count: (counts['PARTIAL_MATCH'] ?? 0) + (counts['AMBIGUOUS'] ?? 0) + (counts['REVIEW_REQUIRED'] ?? 0), color: '#dc2626' },
   ]
 
   return (
@@ -216,17 +231,39 @@ export default function ReconciliationPage() {
         open={uploadOpen}
         title="Upload Data"
         description="Select an Excel or CSV file containing Tally or GSTR-2B records for reconciliation."
-        confirmLabel="Upload"
+        confirmLabel={uploading ? 'Uploading...' : 'Upload'}
         onCancel={() => { setUploadOpen(false); setFile(null) }}
         onConfirm={handleUpload}
       >
-        <div style={{ marginTop: 16 }}>
-          <input 
-            type="file" 
-            accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
-            onChange={(e) => setFile(e.target.files?.[0] || null)}
-            style={{ width: '100%', padding: '10px', border: '1px dashed #cbd5e1', borderRadius: 6, fontSize: 13 }}
-          />
+        <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>Data Source</label>
+            <select
+              value={uploadSource}
+              onChange={(e) => setUploadSource(e.target.value)}
+              style={{ width: '100%', padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 13, color: '#0f172a', background: '#fff' }}
+            >
+              <option value="invoices">Invoices</option>
+              <option value="gstr1">GSTR-1</option>
+              <option value="gstr2b">GSTR-2B</option>
+              <option value="tally">Tally</option>
+              <option value="bank">Bank Statement</option>
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>CSV File</label>
+            <input
+              type="file"
+              accept=".csv"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+              style={{ width: '100%', padding: '10px', border: '1px dashed #cbd5e1', borderRadius: 6, fontSize: 13 }}
+            />
+          </div>
+          {file && (
+            <div style={{ fontSize: 12, color: '#64748b', background: '#f8fafc', borderRadius: 4, padding: '6px 10px' }}>
+              📄 {file.name} ({(file.size / 1024).toFixed(1)} KB)
+            </div>
+          )}
         </div>
       </ConfirmDialog>
 
@@ -388,10 +425,14 @@ export default function ReconciliationPage() {
               
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span>Rows:</span>
-                <select style={{ padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 4, outline: 'none', color: '#475569', fontSize: 12 }}>
-                  <option>10</option>
-                  <option>25</option>
-                  <option>50</option>
+                <select
+                  value={pageSize}
+                  onChange={(e) => { setPageSize(Number(e.target.value)); setPage(0) }}
+                  style={{ padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 4, outline: 'none', color: '#475569', fontSize: 12 }}
+                >
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
                 </select>
               </div>
             </div>

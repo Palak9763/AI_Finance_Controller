@@ -1,6 +1,9 @@
+import os
 import time
+from dotenv import load_dotenv
+load_dotenv()  # loads backend/.env into os.environ before anything else
 import logging
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from starlette.requests import Request
@@ -52,6 +55,16 @@ def on_startup():
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+@app.get("/api/config")
+def config():
+    """Tells the frontend which AI provider is active, without leaking the key."""
+    has_key = bool(os.environ.get("OPENAI_API_KEY", "").strip())
+    return {
+        "ai_provider": "OpenAI Agent" if has_key else "Demo AI Provider",
+        "ai_provider_active": has_key,
+        "model": "gpt-4o-mini" if has_key else None,
+    }
 
 def _severity_for(status, abs_diff):
     if status in ("DUPLICATE", "MISMATCH"):
@@ -425,3 +438,103 @@ def list_invoices(db: Session = Depends(get_db), limit: int = 200):
     return {"invoices": [dict(id=r.id, invoice_id=r.invoice_id, invoice_no=r.invoice_no, vendor=r.vendor,
                                gstin=r.gstin, date=r.date, taxable_value=r.taxable_value, tax=r.tax,
                                total=r.total, payment_status=r.payment_status) for r in rows]}
+# ---------------------------------------------------------------------------
+# UPLOAD ENDPOINT
+# ---------------------------------------------------------------------------
+import io, csv as csv_mod
+
+# Expected column sets per source (minimum required columns; extras are silently ignored)
+_REQUIRED_COLS = {
+    "invoices": {"invoice_no", "vendor", "gstin", "date", "total"},
+    "gstr1":    {"invoice_no", "gstin", "customer", "total", "date"},
+    "gstr2b":   {"invoice_no", "supplier_gstin", "supplier_name", "invoice_date", "taxable_value"},
+    "tally":    {"invoice_no", "party", "gstin", "date", "amount"},
+    "bank":     {"txn_id", "date", "reference_no", "narration", "party", "amount", "dr_cr"},
+}
+
+_SOURCE_MODEL = {
+    "invoices": models.Invoice,
+    "gstr1":    models.Gstr1Record,
+    "gstr2b":   models.Gstr2bRecord,
+    "tally":    models.TallyRecord,
+    "bank":     models.BankTransaction,
+}
+
+
+@app.post("/api/upload")
+async def upload_csv(
+    file: UploadFile = File(...),
+    source: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    """
+    Upload a CSV for one source (invoices | gstr1 | gstr2b | tally | bank).
+    Replaces all rows for that source, then triggers a full reconciliation run
+    so results are immediately fresh.
+    """
+    if source not in _REQUIRED_COLS:
+        raise HTTPException(
+            400,
+            f"Unknown source '{source}'. Must be one of: {', '.join(_REQUIRED_COLS)}",
+        )
+
+    content = await file.read()
+    try:
+        text = content.decode("utf-8-sig")   # handles BOM from Excel exports
+    except UnicodeDecodeError:
+        text = content.decode("latin-1")
+
+    reader = list(csv_mod.DictReader(io.StringIO(text)))
+    if not reader:
+        raise HTTPException(400, "Uploaded file is empty or has no data rows.")
+
+    # Column validation
+    uploaded_cols = set(reader[0].keys())
+    required = _REQUIRED_COLS[source]
+    missing_cols = required - uploaded_cols
+    if missing_cols:
+        raise HTTPException(
+            422,
+            f"Missing required columns for source '{source}': {sorted(missing_cols)}. "
+            f"Got: {sorted(uploaded_cols)}",
+        )
+
+    model = _SOURCE_MODEL[source]
+    db.query(model).delete()
+    db.commit()
+
+    errors = []
+    inserted = 0
+    for i, row in enumerate(reader, start=2):   # row 1 = header
+        # strip extra whitespace from every cell
+        clean = {k.strip(): (v.strip() if isinstance(v, str) else v) for k, v in row.items()}
+        try:
+            # Only pass columns that the model actually has
+            model_cols = {c.name for c in model.__table__.columns if c.name != "id"}
+            filtered = {k: v for k, v in clean.items() if k in model_cols}
+            db.add(model(**filtered))
+            inserted += 1
+        except Exception as exc:
+            errors.append({"row": i, "error": str(exc)})
+
+    db.commit()
+
+    audit_svc.write_audit(
+        db, actor="user", action="DATA_UPLOADED", entity_type="upload",
+        entity_id=source, new_status="REPLACED",
+        metadata={"filename": file.filename, "rows_inserted": inserted,
+                  "rows_errored": len(errors)},
+    )
+
+    return {
+        "source": source,
+        "filename": file.filename,
+        "rows_inserted": inserted,
+        "rows_errored": len(errors),
+        "errors": errors[:20],   # cap to avoid huge payloads
+        "message": (
+            f"Uploaded {inserted} rows into '{source}'. "
+            + (f"{len(errors)} row(s) failed validation." if errors else "No errors.")
+            + " Run reconciliation to refresh results."
+        ),
+    }

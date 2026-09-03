@@ -8,7 +8,7 @@ import Spinner from '../components/Spinner'
 import EmptyState from '../components/EmptyState'
 import StatusBadge from '../components/StatusBadge'
 import ConfirmDialog from '../components/ConfirmDialog'
-import { endpoints, type ExceptionItem } from '../api/client'
+import { endpoints, type ExceptionItem, type AIConfig } from '../api/client'
 import { useToast } from '../components/Toast'
 
 const EVIDENCE_STYLES: Record<string, { color: string; bg: string }> = {
@@ -46,6 +46,7 @@ export default function InvestigationWorkspace() {
   const [visibleStages, setVisibleStages] = useState(0)
   const [confirmAction, setConfirmAction] = useState<'APPROVED' | 'REJECTED' | null>(null)
   const [reason, setReason] = useState('')
+  const [aiConfig, setAiConfig] = useState<AIConfig | null>(null)
   const toast = useToast()
 
   const loadList = async () => {
@@ -81,6 +82,9 @@ export default function InvestigationWorkspace() {
 
   useEffect(() => { loadList() }, [])
   useEffect(() => { if (selectedId !== null) loadDetail(selectedId) }, [selectedId])
+  useEffect(() => {
+    endpoints.config().then(r => setAiConfig(r.data)).catch(() => {})
+  }, [])
 
   const runInvestigation = async () => {
     if (selectedId === null) return
@@ -127,6 +131,30 @@ export default function InvestigationWorkspace() {
 
   return (
     <Layout title="Investigation Workspace" breadcrumb="Workspace">
+      {/* AI Provider status bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>AI Engine:</span>
+        {aiConfig ? (
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 5,
+            fontSize: 12, fontWeight: 600, padding: '3px 12px', borderRadius: 20,
+            background: aiConfig.ai_provider_active ? '#f0fdf4' : '#f8fafc',
+            color: aiConfig.ai_provider_active ? '#16a34a' : '#64748b',
+            border: `1px solid ${aiConfig.ai_provider_active ? '#bbf7d0' : '#e2e8f0'}`,
+          }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: aiConfig.ai_provider_active ? '#16a34a' : '#94a3b8', display: 'inline-block' }} />
+            {aiConfig.ai_provider}
+            {aiConfig.model && <span style={{ fontWeight: 400, color: '#16a34a' }}>({aiConfig.model})</span>}
+          </span>
+        ) : (
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Checking…</span>
+        )}
+        {aiConfig && !aiConfig.ai_provider_active && (
+          <span style={{ fontSize: 11, color: '#94a3b8' }}>
+            — add <code style={{ background: '#f1f5f9', padding: '1px 5px', borderRadius: 3 }}>OPENAI_API_KEY</code> to <code style={{ background: '#f1f5f9', padding: '1px 5px', borderRadius: 3 }}>backend/.env</code> to enable real AI
+          </span>
+        )}
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 16, height: 'calc(100vh - 140px)' }}>
 
         {/* ── Exception Queue ── */}
@@ -216,7 +244,11 @@ export default function InvestigationWorkspace() {
                       style={{ flexShrink: 0 }}
                     >
                       {investigating ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                      {investigating ? 'Investigating…' : 'Investigate with AI'}
+                      {investigating
+                        ? 'Investigating…'
+                        : aiConfig?.ai_provider_active
+                        ? `Investigate with ${aiConfig.model ?? 'OpenAI'}`
+                        : 'Investigate with AI'}
                     </button>
                   )}
                 </div>
