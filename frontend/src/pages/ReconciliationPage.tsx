@@ -94,20 +94,78 @@ export default function ReconciliationPage() {
 
   // Compute Tally vs GSTR-2B comparison from ALL rows (unfiltered).
   // IMPORTANT: Tally's `tally_amount` is a single gross (tax-inclusive) ledger figure.
-  // There is no taxable/CGST/SGST split in Tally data. We do gross-vs-gross only.
-  // gstr2b_amount is also stored as the gross total by the reconciliation engine.
+  // `gstr2b_amount` is now also stored as gross (taxable + cgst + sgst + igst),
+  // pre-computed by main.py before calling reconcile().
   const comparison = useMemo(() => {
-    const tallyCount  = allRows.filter(r => r.tally_amount  != null && r.tally_amount  !== '').length
-    const gstr2bCount = allRows.filter(r => r.gstr2b_amount != null && r.gstr2b_amount !== '').length
-    const sum = (key: keyof ReconciliationResult) =>
-      allRows.reduce((acc, r) => acc + (Number(r[key]) || 0), 0)
+    const hasTally  = (r: ReconciliationResult) => r.tally_amount  != null && r.tally_amount  !== ''
+    const hasGstr2b = (r: ReconciliationResult) => r.gstr2b_amount != null && r.gstr2b_amount !== ''
+
+    // Populations
+    const both    = allRows.filter(r => hasTally(r) && hasGstr2b(r))   // present in both — comparable
+    const tallyOnly  = allRows.filter(r => hasTally(r) && !hasGstr2b(r))
+    const gstr2bOnly = allRows.filter(r => hasGstr2b(r) && !hasTally(r))
+
+    const sumField = (rows: ReconciliationResult[], key: keyof ReconciliationResult) =>
+      rows.reduce((acc, r) => acc + (Number(r[key]) || 0), 0)
+
     return {
-      tallyInvoices:  tallyCount,
-      gstr2bInvoices: gstr2bCount,
-      tallyGross:     sum('tally_amount'),   // gross total — the only field Tally has
-      gstr2bGross:    sum('gstr2b_amount'),  // gross total stored by reconciliation engine
+      // Matched-set counts
+      bothCount:       both.length,
+      tallyOnlyCount:  tallyOnly.length,
+      gstr2bOnlyCount: gstr2bOnly.length,
+      // Matched-set amounts (apples-to-apples)
+      tallyGross:      sumField(both, 'tally_amount'),
+      gstr2bGross:     sumField(both, 'gstr2b_amount'),
+      // One-sided amounts
+      tallyOnlyAmt:    sumField(tallyOnly, 'tally_amount'),
+      gstr2bOnlyAmt:   sumField(gstr2bOnly, 'gstr2b_amount'),
     }
   }, [allRows])
+
+  const COMPARISON_ROWS = [
+    {
+      label: 'Matched Invoices (both sources)',
+      tally: comparison.bothCount,
+      gstr2b: comparison.bothCount,
+      isCount: true,
+      note: null,
+    },
+    {
+      label: 'Total Amount — Gross (matched set)',
+      tally: comparison.tallyGross,
+      gstr2b: comparison.gstr2bGross,
+      isCount: false,
+      note: 'Only invoices present in both Tally & GSTR-2B',
+    },
+    {
+      label: 'Only in Tally (invoices)',
+      tally: comparison.tallyOnlyCount,
+      gstr2b: 0,
+      isCount: true,
+      note: null,
+    },
+    {
+      label: 'Only in Tally (amount)',
+      tally: comparison.tallyOnlyAmt,
+      gstr2b: 0,
+      isCount: false,
+      note: null,
+    },
+    {
+      label: 'Only in GSTR-2B (invoices)',
+      tally: 0,
+      gstr2b: comparison.gstr2bOnlyCount,
+      isCount: true,
+      note: null,
+    },
+    {
+      label: 'Only in GSTR-2B (amount)',
+      tally: 0,
+      gstr2b: comparison.gstr2bOnlyAmt,
+      isCount: false,
+      note: null,
+    },
+  ]
 
   const fmtDiff = (d: number, isCount = false) => {
     if (Math.abs(d) < (isCount ? 0.5 : 0.01)) return { label: '—', color: '#94a3b8' }
@@ -119,13 +177,7 @@ export default function ReconciliationPage() {
     return { label: d > 0 ? `+${s}` : `-${s}`, color: d > 0 ? '#16a34a' : '#dc2626' }
   }
 
-  // Only show what the data actually supports — gross-vs-gross.
-  // Removed fabricated CGST/SGST/IGST/Taxable rows: Tally has no tax split,
-  // so deriving * 0.09 on a gross amount double-counts tax.
-  const COMPARISON_ROWS = [
-    { label: 'Total Invoices',        tally: comparison.tallyInvoices, gstr2b: comparison.gstr2bInvoices, isCount: true  },
-    { label: 'Total Amount (Gross)',   tally: comparison.tallyGross,    gstr2b: comparison.gstr2bGross,    isCount: false },
-  ]
+
 
   // Cards Data based on screenshot exactly
   const CARDS = [
@@ -258,7 +310,7 @@ export default function ReconciliationPage() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && load()}
+                onKeyDown={() => {}}
                 placeholder="Search invoice or vendor..."
                 style={{
                   width: '100%', padding: '8px 12px 8px 34px', fontSize: 13,

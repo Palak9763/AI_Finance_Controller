@@ -159,8 +159,10 @@ def reconcile(invoices_raw: List[dict], gstr1_raw: List[dict], gstr2b_raw: List[
 
     invoices = norm_list(invoices_raw, "invoices", "invoice_no", "vendor", "gstin", "date", "total", "invoice_id")
     gstr1 = norm_list(gstr1_raw, "gstr1", "invoice_no", "customer", "gstin", "date", "total", "invoice_no")
+    # Use the pre-computed "total" field (taxable_value + cgst + sgst + igst),
+    # which main.py injects before calling reconcile(), so both sides are gross.
     gstr2b = norm_list(gstr2b_raw, "gstr2b", "invoice_no", "supplier_name", "supplier_gstin", "invoice_date",
-                        "taxable_value", "invoice_no")
+                        "total", "invoice_no")
     tally = norm_list(tally_raw, "tally", "invoice_no", "party", "gstin", "date", "amount", "voucher_id")
 
     bank = []
