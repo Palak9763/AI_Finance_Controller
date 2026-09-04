@@ -6,6 +6,7 @@ python-multipart
 scikit-learn
 numpy
 pandas
+openpyxl
 python-dateutil
 pytest
 requests

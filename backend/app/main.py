@@ -49,6 +49,14 @@ def on_startup():
     db = next(get_db())
     try:
         seed_knowledge_base(db)
+        # Auto-run reconciliation on first boot so fresh installs show data immediately
+        if not _latest_run(db):
+            logger.info("No prior reconciliation run found — running automatically on startup.")
+            try:
+                _run_reconciliation_core(db)
+                logger.info("Startup reconciliation completed.")
+            except Exception as exc:
+                logger.warning("Startup reconciliation failed (non-fatal): %s", exc)
     finally:
         db.close()
 
@@ -82,29 +90,32 @@ def _severity_for(status, abs_diff):
 
 EXCEPTION_STATUSES = {"PARTIAL_MATCH", "MISMATCH", "MISSING", "DUPLICATE", "AMBIGUOUS", "REVIEW_REQUIRED"}
 
-@app.post("/api/reconciliation/run")
-def run_reconciliation(db: Session = Depends(get_db)):
+from decimal import Decimal, InvalidOperation
+
+def _safe_dec(v):
+    try: return Decimal(str(v or 0))
+    except InvalidOperation: return Decimal(0)
+
+
+def _run_reconciliation_core(db: Session) -> dict:
+    """Core reconciliation logic shared by the API endpoint and the startup auto-run."""
     counts = ingestion.ingest_all(db)
     seed_knowledge_base(db)
 
     invoices = ingestion.rows_as_dicts(db, models.Invoice)
-    gstr1 = ingestion.rows_as_dicts(db, models.Gstr1Record)
+    gstr1    = ingestion.rows_as_dicts(db, models.Gstr1Record)
     gstr2b_raw = ingestion.rows_as_dicts(db, models.Gstr2bRecord)
-    tally = ingestion.rows_as_dicts(db, models.TallyRecord)
-    bank = ingestion.rows_as_dicts(db, models.BankTransaction)
+    tally    = ingestion.rows_as_dicts(db, models.TallyRecord)
+    bank     = ingestion.rows_as_dicts(db, models.BankTransaction)
     ground_truth = ingestion.load_ground_truth()
 
     # GSTR-2B stores taxable_value + cgst + sgst + igst separately.
     # Tally stores a single gross (tax-inclusive) amount.
     # Pre-compute gross total on each GSTR-2B record so both sides compare on the same basis.
-    from decimal import Decimal, InvalidOperation
-    def _safe_dec(v):
-        try: return Decimal(str(v or 0))
-        except InvalidOperation: return Decimal(0)
-
     gstr2b = []
     for r in gstr2b_raw:
-        gross = _safe_dec(r.get("taxable_value")) + _safe_dec(r.get("cgst")) + _safe_dec(r.get("sgst")) + _safe_dec(r.get("igst"))
+        gross = (_safe_dec(r.get("taxable_value")) + _safe_dec(r.get("cgst"))
+                 + _safe_dec(r.get("sgst")) + _safe_dec(r.get("igst")))
         gstr2b.append({**r, "total": str(gross)})
 
     t0 = time.time()
@@ -113,7 +124,7 @@ def run_reconciliation(db: Session = Depends(get_db)):
 
     evaluation = eval_svc.compute_evaluation(results, ground_truth, processing_time_ms)
 
-    # persist run
+    # Wipe previous run data and persist fresh results
     db.query(models.Exception_).delete()
     db.query(models.ReconciliationMatch).delete()
     db.query(models.ReconciliationResultRow).delete()
@@ -173,6 +184,11 @@ def run_reconciliation(db: Session = Depends(get_db)):
 
     return {"run_id": run.id, "evaluation": evaluation, "exception_count": exception_count,
             "anomaly_count": len(anomalies), "ingested": counts}
+
+
+@app.post("/api/reconciliation/run")
+def run_reconciliation(db: Session = Depends(get_db)):
+    return _run_reconciliation_core(db)
 
 def _latest_run(db):
     return db.query(models.ReconciliationRun).order_by(models.ReconciliationRun.id.desc()).first()
@@ -441,7 +457,8 @@ def list_invoices(db: Session = Depends(get_db), limit: int = 200):
 # ---------------------------------------------------------------------------
 # UPLOAD ENDPOINT
 # ---------------------------------------------------------------------------
-import io, csv as csv_mod
+import io
+import pandas as pd
 
 # Expected column sets per source (minimum required columns; extras are silently ignored)
 _REQUIRED_COLS = {
@@ -479,12 +496,25 @@ async def upload_csv(
         )
 
     content = await file.read()
-    try:
-        text = content.decode("utf-8-sig")   # handles BOM from Excel exports
-    except UnicodeDecodeError:
-        text = content.decode("latin-1")
+    filename_lower = (file.filename or "").lower()
 
-    reader = list(csv_mod.DictReader(io.StringIO(text)))
+    try:
+        if filename_lower.endswith((".xlsx", ".xls")):
+            df = pd.read_excel(io.BytesIO(content), dtype=str)
+        else:
+            # CSV: try UTF-8 with BOM first (common from Excel "Save as CSV")
+            try:
+                text = content.decode("utf-8-sig")
+            except UnicodeDecodeError:
+                text = content.decode("latin-1")
+            df = pd.read_csv(io.StringIO(text), dtype=str)
+    except Exception as exc:
+        raise HTTPException(400, f"Could not parse file: {exc}")
+
+    # Normalise column names (strip whitespace)
+    df.columns = [c.strip() for c in df.columns]
+    df = df.fillna("")
+    reader = df.to_dict(orient="records")
     if not reader:
         raise HTTPException(400, "Uploaded file is empty or has no data rows.")
 

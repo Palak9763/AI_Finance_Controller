@@ -230,7 +230,7 @@ export default function ReconciliationPage() {
       <ConfirmDialog
         open={uploadOpen}
         title="Upload Data"
-        description="Select an Excel or CSV file containing Tally or GSTR-2B records for reconciliation."
+        description="Select a CSV or Excel (.xlsx / .xls) file. Choose the data source type first, then upload."
         confirmLabel={uploading ? 'Uploading...' : 'Upload'}
         onCancel={() => { setUploadOpen(false); setFile(null) }}
         onConfirm={handleUpload}
@@ -254,7 +254,7 @@ export default function ReconciliationPage() {
             <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>CSV File</label>
             <input
               type="file"
-              accept=".csv"
+              accept=".csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
               onChange={(e) => setFile(e.target.files?.[0] || null)}
               style={{ width: '100%', padding: '10px', border: '1px dashed #cbd5e1', borderRadius: 6, fontSize: 13 }}
             />
