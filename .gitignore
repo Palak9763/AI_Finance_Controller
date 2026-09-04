@@ -1,13 +1,27 @@
 # Python
 __pycache__/
 *.pyc
-backend/finance_controller.db
+
+# Virtual environments
+venv/
+.venv/
+backend/venv/
+
+# Environment variables
+.env
 backend/.env
+
+# Database
+backend/finance_controller.db
 
 # Node
 frontend/node_modules/
+node_modules/
+
+# Build
 frontend/dist/
-frontend/.env
+dist/
 
 # OS
 .DS_Store
+Thumbs.db
