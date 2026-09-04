@@ -49,14 +49,6 @@ def on_startup():
     db = next(get_db())
     try:
         seed_knowledge_base(db)
-        # Auto-run reconciliation on first boot so fresh installs show data immediately
-        if not _latest_run(db):
-            logger.info("No prior reconciliation run found — running automatically on startup.")
-            try:
-                _run_reconciliation_core(db)
-                logger.info("Startup reconciliation completed.")
-            except Exception as exc:
-                logger.warning("Startup reconciliation failed (non-fatal): %s", exc)
     finally:
         db.close()
 
