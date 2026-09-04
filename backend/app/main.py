@@ -9,11 +9,25 @@ from sqlalchemy.orm import Session
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from pydantic import BaseModel, EmailStr
 from . import models, schemas
 from .database import engine, get_db, Base
 from .services import ingestion, reconciliation as recon_svc, evaluation as eval_svc
 from .services import anomaly as anomaly_svc, ai_agent, audit as audit_svc
 from .services.knowledge_seed import DOCS as KB_DOCS
+from .services.auth import (
+    hash_password, verify_password, create_access_token, get_current_user
+)
+
+# ── Auth Pydantic schemas ──────────────────────────────────────────────────────
+class RegisterRequest(BaseModel):
+    email: str
+    full_name: str
+    password: str
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("finance-controller")
@@ -52,12 +66,45 @@ def on_startup():
     finally:
         db.close()
 
+# ── Auth endpoints (public) ───────────────────────────────────────────────────
+@app.post("/api/auth/register", status_code=201)
+def register(req: RegisterRequest, db: Session = Depends(get_db)):
+    if db.query(models.User).filter(models.User.email == req.email.lower().strip()).first():
+        raise HTTPException(400, "An account with this email already exists.")
+    user = models.User(
+        email=req.email.lower().strip(),
+        full_name=req.full_name.strip(),
+        hashed_password=hash_password(req.password),
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    token = create_access_token({"sub": str(user.id)})
+    return {"access_token": token, "token_type": "bearer",
+            "user": {"id": user.id, "email": user.email, "full_name": user.full_name}}
+
+@app.post("/api/auth/login")
+def login(req: LoginRequest, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.email == req.email.lower().strip()).first()
+    if not user or not verify_password(req.password, user.hashed_password):
+        raise HTTPException(401, "Invalid email or password.")
+    if not user.is_active:
+        raise HTTPException(403, "Account is disabled.")
+    token = create_access_token({"sub": str(user.id)})
+    return {"access_token": token, "token_type": "bearer",
+            "user": {"id": user.id, "email": user.email, "full_name": user.full_name}}
+
+@app.get("/api/auth/me")
+def me(current_user: models.User = Depends(get_current_user)):
+    return {"id": current_user.id, "email": current_user.email, "full_name": current_user.full_name}
+
+# ── Health (public) ────────────────────────────────────────────────────────────
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
 @app.get("/api/config")
-def config():
+def config(current_user: models.User = Depends(get_current_user)):
     """Tells the frontend which AI provider is active, without leaking the key."""
     has_key = bool(os.environ.get("OPENAI_API_KEY", "").strip())
     return {
@@ -179,7 +226,7 @@ def _run_reconciliation_core(db: Session) -> dict:
 
 
 @app.post("/api/reconciliation/run")
-def run_reconciliation(db: Session = Depends(get_db)):
+def run_reconciliation(db: Session = Depends(get_db), _u: models.User = Depends(get_current_user)):
     return _run_reconciliation_core(db)
 
 def _latest_run(db):
@@ -187,7 +234,8 @@ def _latest_run(db):
 
 @app.get("/api/reconciliation/results")
 def get_results(status: str = None, vendor: str = None, search: str = None,
-                 skip: int = 0, limit: int = 500, db: Session = Depends(get_db)):
+                 skip: int = 0, limit: int = 500, db: Session = Depends(get_db),
+                 _u: models.User = Depends(get_current_user)):
     run = _latest_run(db)
     if not run:
         return {"results": [], "total": 0}
@@ -212,28 +260,28 @@ def _result_to_dict(r):
     )
 
 @app.get("/api/reconciliation/results/{result_id}")
-def get_result(result_id: int, db: Session = Depends(get_db)):
+def get_result(result_id: int, db: Session = Depends(get_db), _u: models.User = Depends(get_current_user)):
     r = db.query(models.ReconciliationResultRow).filter(models.ReconciliationResultRow.id == result_id).first()
     if not r:
         raise HTTPException(404, "Result not found")
     return _result_to_dict(r)
 
 @app.get("/api/reconciliation/summary")
-def reconciliation_summary(db: Session = Depends(get_db)):
+def reconciliation_summary(db: Session = Depends(get_db), _u: models.User = Depends(get_current_user)):
     run = _latest_run(db)
     if not run:
         return {"has_run": False}
     return {"has_run": True, "run_id": run.id, "run_at": run.run_at, **run.evaluation_json}
 
 @app.get("/api/evaluation")
-def get_evaluation(db: Session = Depends(get_db)):
+def get_evaluation(db: Session = Depends(get_db), _u: models.User = Depends(get_current_user)):
     run = _latest_run(db)
     if not run:
         return {"has_run": False}
     return {"has_run": True, "run_id": run.id, "run_at": run.run_at, **run.evaluation_json}
 
 @app.get("/api/dashboard")
-def dashboard(db: Session = Depends(get_db)):
+def dashboard(db: Session = Depends(get_db), _u: models.User = Depends(get_current_user)):
     run = _latest_run(db)
     if not run:
         return {"has_run": False}
@@ -252,7 +300,7 @@ def dashboard(db: Session = Depends(get_db)):
     }
 
 @app.get("/api/exceptions")
-def list_exceptions(status: str = None, severity: str = None, db: Session = Depends(get_db)):
+def list_exceptions(status: str = None, severity: str = None, db: Session = Depends(get_db), _u: models.User = Depends(get_current_user)):
     q = db.query(models.Exception_)
     if status:
         q = q.filter(models.Exception_.status == status)
@@ -266,7 +314,7 @@ def list_exceptions(status: str = None, severity: str = None, db: Session = Depe
     ], "total": q.count()}
 
 @app.get("/api/exceptions/{exception_id}")
-def get_exception(exception_id: int, db: Session = Depends(get_db)):
+def get_exception(exception_id: int, db: Session = Depends(get_db), _u: models.User = Depends(get_current_user)):
     e = db.query(models.Exception_).filter(models.Exception_.id == exception_id).first()
     if not e:
         raise HTTPException(404, "Exception not found")
@@ -299,7 +347,7 @@ def _review_to_dict(rv):
 
 @app.post("/api/exceptions/{exception_id}/investigate")
 def investigate_exception(exception_id: int, req: schemas.InvestigateRequest = schemas.InvestigateRequest(),
-                           db: Session = Depends(get_db)):
+                           db: Session = Depends(get_db), _u: models.User = Depends(get_current_user)):
     e = db.query(models.Exception_).filter(models.Exception_.id == exception_id).first()
     if not e:
         raise HTTPException(404, "Exception not found")
@@ -337,14 +385,14 @@ def investigate_exception(exception_id: int, req: schemas.InvestigateRequest = s
     return {"investigation": _investigation_to_dict(inv), "review": _review_to_dict(review)}
 
 @app.get("/api/investigations/{investigation_id}")
-def get_investigation(investigation_id: int, db: Session = Depends(get_db)):
+def get_investigation(investigation_id: int, db: Session = Depends(get_db), _u: models.User = Depends(get_current_user)):
     inv = db.query(models.Investigation).filter(models.Investigation.id == investigation_id).first()
     if not inv:
         raise HTTPException(404, "Investigation not found")
     return _investigation_to_dict(inv)
 
 @app.get("/api/anomalies")
-def list_anomalies(risk_level: str = None, db: Session = Depends(get_db)):
+def list_anomalies(risk_level: str = None, db: Session = Depends(get_db), _u: models.User = Depends(get_current_user)):
     q = db.query(models.Anomaly)
     if risk_level:
         q = q.filter(models.Anomaly.risk_level == risk_level)
@@ -358,7 +406,7 @@ def list_anomalies(risk_level: str = None, db: Session = Depends(get_db)):
     ], "total": q.count()}
 
 @app.get("/api/reviews")
-def list_reviews(status: str = None, db: Session = Depends(get_db)):
+def list_reviews(status: str = None, db: Session = Depends(get_db), _u: models.User = Depends(get_current_user)):
     q = db.query(models.Review)
     if status:
         q = q.filter(models.Review.status == status)
@@ -401,15 +449,15 @@ def _decide_review(review_id, new_status, req: schemas.ReviewAction, db: Session
     return _review_to_dict(rv)
 
 @app.post("/api/reviews/{review_id}/approve")
-def approve_review(review_id: int, req: schemas.ReviewAction = schemas.ReviewAction(), db: Session = Depends(get_db)):
+def approve_review(review_id: int, req: schemas.ReviewAction = schemas.ReviewAction(), db: Session = Depends(get_db), _u: models.User = Depends(get_current_user)):
     return _decide_review(review_id, "APPROVED", req, db)
 
 @app.post("/api/reviews/{review_id}/reject")
-def reject_review(review_id: int, req: schemas.ReviewAction = schemas.ReviewAction(), db: Session = Depends(get_db)):
+def reject_review(review_id: int, req: schemas.ReviewAction = schemas.ReviewAction(), db: Session = Depends(get_db), _u: models.User = Depends(get_current_user)):
     return _decide_review(review_id, "REJECTED", req, db)
 
 @app.post("/api/reviews/{review_id}/pending")
-def pending_review(review_id: int, req: schemas.ReviewAction = schemas.ReviewAction(), db: Session = Depends(get_db)):
+def pending_review(review_id: int, req: schemas.ReviewAction = schemas.ReviewAction(), db: Session = Depends(get_db), _u: models.User = Depends(get_current_user)):
     rv = db.query(models.Review).filter(models.Review.id == review_id).first()
     if not rv:
         raise HTTPException(404, "Review not found")
@@ -422,7 +470,7 @@ def pending_review(review_id: int, req: schemas.ReviewAction = schemas.ReviewAct
     return _review_to_dict(rv)
 
 @app.get("/api/audit-logs")
-def list_audit_logs(entity_type: str = None, limit: int = 200, db: Session = Depends(get_db)):
+def list_audit_logs(entity_type: str = None, limit: int = 200, db: Session = Depends(get_db), _u: models.User = Depends(get_current_user)):
     q = db.query(models.AuditLog)
     if entity_type:
         q = q.filter(models.AuditLog.entity_type == entity_type)
@@ -436,12 +484,12 @@ def list_audit_logs(entity_type: str = None, limit: int = 200, db: Session = Dep
     ]}
 
 @app.get("/api/knowledge-documents")
-def list_knowledge_docs(db: Session = Depends(get_db)):
+def list_knowledge_docs(db: Session = Depends(get_db), _u: models.User = Depends(get_current_user)):
     rows = db.query(models.KnowledgeDocument).all()
     return {"documents": [dict(id=d.id, title=d.title, category=d.category, content=d.content) for d in rows]}
 
 @app.get("/api/transactions/invoices")
-def list_invoices(db: Session = Depends(get_db), limit: int = 200):
+def list_invoices(db: Session = Depends(get_db), limit: int = 200, _u: models.User = Depends(get_current_user)):
     rows = db.query(models.Invoice).limit(limit).all()
     return {"invoices": [dict(id=r.id, invoice_id=r.invoice_id, invoice_no=r.invoice_no, vendor=r.vendor,
                                gstin=r.gstin, date=r.date, taxable_value=r.taxable_value, tax=r.tax,
@@ -475,6 +523,7 @@ async def upload_csv(
     file: UploadFile = File(...),
     source: str = Form(...),
     db: Session = Depends(get_db),
+    _u: models.User = Depends(get_current_user),
 ):
     """
     Upload a CSV for one source (invoices | gstr1 | gstr2b | tally | bank).

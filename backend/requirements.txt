@@ -10,3 +10,6 @@ openpyxl
 python-dateutil
 pytest
 requests
+python-jose[cryptography]
+passlib[bcrypt]
+python-dotenv

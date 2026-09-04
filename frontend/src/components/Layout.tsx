@@ -1,5 +1,6 @@
 import { type ReactNode } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 import {
   LayoutDashboard, GitCompareArrows, Search, AlertTriangle, ClipboardCheck,
   ScrollText, BookOpen, Receipt, Settings as SettingsIcon, Zap, LogOut,
@@ -33,6 +34,17 @@ export default function Layout({
   title: string
   breadcrumb?: string
 }) {
+  const { user, logout } = useAuth()
+  const nav = useNavigate()
+
+  const handleLogout = () => {
+    logout()
+    nav('/login')
+  }
+
+  const initials = user?.full_name
+    ? user.full_name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+    : '?'
   return (
     <div style={{ display: 'flex', height: '100vh', background: 'var(--bg)', overflow: 'hidden' }}>
       {/* ── Sidebar ── */}
@@ -141,20 +153,26 @@ export default function Layout({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontSize: 12,
+            fontSize: 11,
             fontWeight: 700,
             color: 'var(--brand)',
             flexShrink: 0,
           }}>
-            A
+            {initials}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              Admin User
+              {user?.full_name ?? 'User'}
             </div>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>SQLite • Demo Mode</div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user?.email}</div>
           </div>
-          <LogOut size={14} color="var(--text-muted)" style={{ flexShrink: 0, cursor: 'pointer' }} />
+          <button
+            onClick={handleLogout}
+            title="Sign out"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, borderRadius: 4, display: 'flex', alignItems: 'center' }}
+          >
+            <LogOut size={14} color="var(--text-muted)" />
+          </button>
         </div>
       </aside>
 
