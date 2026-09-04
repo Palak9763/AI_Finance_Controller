@@ -1,7 +1,7 @@
 import os
 import time
 from dotenv import load_dotenv
-load_dotenv()  # loads backend/.env into os.environ before anything else
+load_dotenv()
 import logging
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,7 +19,6 @@ from .services.auth import (
     hash_password, verify_password, create_access_token, get_current_user
 )
 
-# ── Auth Pydantic schemas ──────────────────────────────────────────────────────
 class RegisterRequest(BaseModel):
     email: str
     full_name: str
@@ -66,7 +65,6 @@ def on_startup():
     finally:
         db.close()
 
-# ── Auth endpoints (public) ───────────────────────────────────────────────────
 @app.post("/api/auth/register", status_code=201)
 def register(req: RegisterRequest, db: Session = Depends(get_db)):
     if db.query(models.User).filter(models.User.email == req.email.lower().strip()).first():
@@ -98,7 +96,6 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
 def me(current_user: models.User = Depends(get_current_user)):
     return {"id": current_user.id, "email": current_user.email, "full_name": current_user.full_name}
 
-# ── Health (public) ────────────────────────────────────────────────────────────
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -148,9 +145,6 @@ def _run_reconciliation_core(db: Session) -> dict:
     bank     = ingestion.rows_as_dicts(db, models.BankTransaction)
     ground_truth = ingestion.load_ground_truth()
 
-    # GSTR-2B stores taxable_value + cgst + sgst + igst separately.
-    # Tally stores a single gross (tax-inclusive) amount.
-    # Pre-compute gross total on each GSTR-2B record so both sides compare on the same basis.
     gstr2b = []
     for r in gstr2b_raw:
         gross = (_safe_dec(r.get("taxable_value")) + _safe_dec(r.get("cgst"))
@@ -163,7 +157,6 @@ def _run_reconciliation_core(db: Session) -> dict:
 
     evaluation = eval_svc.compute_evaluation(results, ground_truth, processing_time_ms)
 
-    # Wipe previous run data and persist fresh results
     db.query(models.Exception_).delete()
     db.query(models.ReconciliationMatch).delete()
     db.query(models.ReconciliationResultRow).delete()
@@ -494,13 +487,9 @@ def list_invoices(db: Session = Depends(get_db), limit: int = 200, _u: models.Us
     return {"invoices": [dict(id=r.id, invoice_id=r.invoice_id, invoice_no=r.invoice_no, vendor=r.vendor,
                                gstin=r.gstin, date=r.date, taxable_value=r.taxable_value, tax=r.tax,
                                total=r.total, payment_status=r.payment_status) for r in rows]}
-# ---------------------------------------------------------------------------
-# UPLOAD ENDPOINT
-# ---------------------------------------------------------------------------
 import io
 import pandas as pd
 
-# Expected column sets per source (minimum required columns; extras are silently ignored)
 _REQUIRED_COLS = {
     "invoices": {"invoice_no", "vendor", "gstin", "date", "total"},
     "gstr1":    {"invoice_no", "gstin", "customer", "total", "date"},
@@ -543,7 +532,6 @@ async def upload_csv(
         if filename_lower.endswith((".xlsx", ".xls")):
             df = pd.read_excel(io.BytesIO(content), dtype=str)
         else:
-            # CSV: try UTF-8 with BOM first (common from Excel "Save as CSV")
             try:
                 text = content.decode("utf-8-sig")
             except UnicodeDecodeError:
@@ -552,14 +540,12 @@ async def upload_csv(
     except Exception as exc:
         raise HTTPException(400, f"Could not parse file: {exc}")
 
-    # Normalise column names (strip whitespace)
     df.columns = [c.strip() for c in df.columns]
     df = df.fillna("")
     reader = df.to_dict(orient="records")
     if not reader:
         raise HTTPException(400, "Uploaded file is empty or has no data rows.")
 
-    # Column validation
     uploaded_cols = set(reader[0].keys())
     required = _REQUIRED_COLS[source]
     missing_cols = required - uploaded_cols
@@ -576,11 +562,9 @@ async def upload_csv(
 
     errors = []
     inserted = 0
-    for i, row in enumerate(reader, start=2):   # row 1 = header
-        # strip extra whitespace from every cell
+    for i, row in enumerate(reader, start=2):
         clean = {k.strip(): (v.strip() if isinstance(v, str) else v) for k, v in row.items()}
         try:
-            # Only pass columns that the model actually has
             model_cols = {c.name for c in model.__table__.columns if c.name != "id"}
             filtered = {k: v for k, v in clean.items() if k in model_cols}
             db.add(model(**filtered))
@@ -602,7 +586,7 @@ async def upload_csv(
         "filename": file.filename,
         "rows_inserted": inserted,
         "rows_errored": len(errors),
-        "errors": errors[:20],   # cap to avoid huge payloads
+        "errors": errors[:20],
         "message": (
             f"Uploaded {inserted} rows into '{source}'. "
             + (f"{len(errors)} row(s) failed validation." if errors else "No errors.")

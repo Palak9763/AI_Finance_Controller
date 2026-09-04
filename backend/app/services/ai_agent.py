@@ -28,10 +28,6 @@ PROVIDER_DEMO = "Demo AI Provider"
 PROVIDER_OPENAI = "OpenAI Agent"
 
 
-# ---------------------------------------------------------------------------
-# READ-ONLY TOOLS (agent may only call these; create_review is the sole
-# write path and it can only create PENDING reviews)
-# ---------------------------------------------------------------------------
 class AgentTools:
     def __init__(self, db, models):
         self.db = db
@@ -86,9 +82,6 @@ def _row_to_dict(row):
     return {c.name: getattr(row, c.name) for c in row.__table__.columns}
 
 
-# ---------------------------------------------------------------------------
-# STATE MACHINE
-# ---------------------------------------------------------------------------
 def investigate(exception_row, result_row, tools: AgentTools, provider: str = None):
     """
     Runs the full node graph and returns (structured_output_dict, stages_log, provider_used).
@@ -101,13 +94,11 @@ def investigate(exception_row, result_row, tools: AgentTools, provider: str = No
     def log_stage(name, detail):
         stages.append({"stage": name, "detail": detail})
 
-    # --- Understand Exception ---
     log_stage("Understand Exception",
                f"Case {result_row.invoice_no}: status={result_row.status}, vendor={result_row.vendor}, "
                f"amounts(invoice={result_row.invoices_amount}, tally={result_row.tally_amount}, "
                f"bank={result_row.bank_amount})")
 
-    # --- Collect Related Records ---
     gstr = tools.get_gstr_record(result_row.invoice_no)
     tally = tools.get_tally_record(result_row.invoice_no)
     bank = tools.get_bank_transaction(result_row.invoice_no)
@@ -116,14 +107,12 @@ def investigate(exception_row, result_row, tools: AgentTools, provider: str = No
                f"Retrieved {1 if gstr.get('gstr1') else 0} GSTR-1, {1 if gstr.get('gstr2b') else 0} GSTR-2B, "
                f"{len(tally)} Tally, {len(bank)} Bank, {len(invoice)} Invoice record(s).")
 
-    # --- Search Finance Knowledge (RAG) ---
     query_text = _build_kb_query(result_row)
     kb_hits = tools.search_finance_knowledge(query_text, top_k=2)
     log_stage("Search Finance Knowledge (RAG)",
                f"Query: '{query_text}'. Retrieved {len(kb_hits)} policy doc(s): "
                f"{', '.join(h['title'] for h in kb_hits) if kb_hits else 'none'}")
 
-    # --- Analyze Evidence ---
     evidence = _build_evidence(result_row, gstr, tally, bank, invoice)
     log_stage("Analyze Evidence", f"Compiled {len(evidence)} evidence item(s).")
 
@@ -245,7 +234,7 @@ def _demo_investigate(result_row, evidence, kb_hits):
         evidence.append({"source": "system", "field": "match_candidates", "value": "multiple plausible matches",
                           "type": "UNKNOWN"})
 
-    else:  # REVIEW_REQUIRED
+    else:
         root_cause = "Record failed basic validation (invalid GSTIN format or unrecognized vendor) and cannot be reconciled with confidence."
         recommendation = "Route to vendor master data team to validate/register GSTIN before further processing."
         confidence, risk, needs_review = 0.4, "HIGH", True
@@ -297,7 +286,6 @@ def _openai_investigate(result_row, evidence, kb_hits):
         parsed.setdefault("retrieved_docs", [h["title"] for h in kb_hits])
         return parsed
     except Exception:
-        # Bulletproof fallback -- never break the demo.
         fallback = _demo_investigate(result_row, evidence, kb_hits)
         fallback["summary"] += " (OpenAI call unavailable -- fell back to Demo AI Provider heuristics.)"
         return fallback

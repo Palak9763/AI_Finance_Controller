@@ -39,22 +39,17 @@ VENDOR_ALIASES = {
 
 BASE_DATE = date(2025, 6, 1)
 
-
 def d(days_offset):
     return BASE_DATE + timedelta(days=days_offset)
 
-
 def money(x):
     return str(Decimal(str(x)).quantize(Decimal("0.01")))
-
 
 def gst_split(taxable, rate=18):
     """Split into CGST/SGST (intra-state) for simplicity."""
     tax = round(taxable * rate / 100, 2)
     half = round(tax / 2, 2)
     return half, half, 0.0, round(taxable + tax, 2)
-
-
 class Records:
     def __init__(self):
         self.gstr1 = []

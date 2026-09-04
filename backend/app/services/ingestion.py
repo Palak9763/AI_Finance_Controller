@@ -12,10 +12,8 @@ def _load_csv(name):
     with open(path, newline="") as f:
         return list(csv.DictReader(f))
 
-
 def load_ground_truth():
     return _load_csv("ground_truth.csv")
-
 
 def ingest_all(db):
     """Idempotent full reload of source tables from the synthetic data CSVs."""

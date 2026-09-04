@@ -9,7 +9,6 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from .knowledge_seed import DOCS
 
-
 class KnowledgeBase:
     def __init__(self, docs=None):
         self.docs = docs or DOCS
@@ -34,10 +33,7 @@ class KnowledgeBase:
             ))
         return results
 
-
 _kb_instance = None
-
-
 def get_kb():
     global _kb_instance
     if _kb_instance is None:

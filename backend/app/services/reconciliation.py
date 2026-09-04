@@ -22,7 +22,6 @@ from .normalization import (
     NormalizationResult,
 )
 
-# ---- Tolerance engine: config-driven, not hardcoded in matching logic ----
 TOLERANCE_CONFIG = {
     "amount_absolute_tolerance": Decimal("100.00"),
     "amount_percentage_tolerance": Decimal("0.5"),   # percent
@@ -116,7 +115,6 @@ def normalize_invoice_record(raw: dict, source_id: str, source: str, norm_result
         taxable=None, tax=tax, total=amt_norm,
         payment_status=raw.get("payment_status", ""), source_id=source_id,
     )
-
 
 @dataclass
 class ReconciliationResult:

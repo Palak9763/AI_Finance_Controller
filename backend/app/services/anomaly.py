@@ -54,7 +54,7 @@ def detect_anomalies(results):
             try:
                 clf = IsolationForest(contamination="auto", random_state=42)
                 clf.fit(arr)
-                scores = clf.decision_function(arr)  # higher = more normal
+                scores = clf.decision_function(arr)
                 for (r, a), s in zip(pairs, scores):
                     iso_scores[id(r)] = float(s)
             except Exception:
@@ -68,7 +68,7 @@ def detect_anomalies(results):
                 continue
             composite_score = round(min(1.0, (abs(z) / 4) + (0.3 if is_outlier_iqr else 0)), 3)
             if id(r) in iso_scores:
-                # normalize isolation forest score (roughly -0.5..0.5) into 0..1 anomaly contribution
+
                 iso_contrib = max(0.0, 0.5 - iso_scores[id(r)])
                 composite_score = round(min(1.0, composite_score * 0.6 + iso_contrib * 0.4), 3)
 

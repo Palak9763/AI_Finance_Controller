@@ -8,7 +8,6 @@ from typing import List, Dict
 from .normalization import normalize_invoice_number
 from .reconciliation import STATUSES
 
-
 def compute_evaluation(results: List, ground_truth_rows: List[dict], processing_time_ms: float) -> dict:
     total = len(results)
     status_counts = defaultdict(int)

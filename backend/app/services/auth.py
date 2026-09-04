@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from .. import models
 
-# ── Config ────────────────────────────────────────────────────────────────────
+
 SECRET_KEY  = os.environ.get("JWT_SECRET_KEY", "change-me-in-production-secret-key-32chars")
 ALGORITHM   = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", 60 * 8))
@@ -19,14 +19,14 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", 
 bearer = HTTPBearer(auto_error=False)
 
 
-# ── Passwords ─────────────────────────────────────────────────────────────────
+
 def hash_password(plain: str) -> str:
     return bcrypt.hashpw(plain.encode(), bcrypt.gensalt()).decode()
 
 def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(plain.encode(), hashed.encode())
 
-# ── Tokens ────────────────────────────────────────────────────────────────────
+
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     payload = data.copy()
     expire  = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
@@ -43,7 +43,7 @@ def decode_token(token: str) -> dict:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-# ── FastAPI dependency ────────────────────────────────────────────────────────
+
 def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer),
     db: Session = Depends(get_db),
